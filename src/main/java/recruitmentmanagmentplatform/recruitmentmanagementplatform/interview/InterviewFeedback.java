@@ -19,7 +19,6 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.User;
 
 @Getter
 @Setter
@@ -38,10 +37,6 @@ public class InterviewFeedback {
     @JoinColumn(name = "interview_id", nullable = false)
     private Interview interview;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "interviewer_id", nullable = false)
-    private User interviewer;
-
     @Column(name = "technical_score")
     private Integer technicalScore;
 
@@ -50,9 +45,6 @@ public class InterviewFeedback {
 
     @Column(name = "problem_solving_score")
     private Integer problemSolvingScore;
-
-    @Column(name = "culture_fit_score")
-    private Integer cultureFitScore;
 
     @Column(name = "overall_score", precision = 4, scale = 2)
     private BigDecimal overallScore;
