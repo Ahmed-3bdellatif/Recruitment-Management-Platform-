@@ -5,11 +5,16 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinTable;
+import jakarta.persistence.ManyToMany;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Set;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -55,6 +60,15 @@ public class Candidate {
 
     @Column(length = 100)
     private String source;
+
+    @Builder.Default
+    @ManyToMany
+    @JoinTable(
+            name = "candidate_tag_mapping",
+            joinColumns = @JoinColumn(name = "candidate_id"),
+            inverseJoinColumns = @JoinColumn(name = "tag_id")
+    )
+    private Set<CandidateTag> tags = new HashSet<>();
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
