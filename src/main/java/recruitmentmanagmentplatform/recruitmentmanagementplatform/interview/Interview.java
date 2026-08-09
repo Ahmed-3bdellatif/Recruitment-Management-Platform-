@@ -43,10 +43,6 @@ public class Interview {
     @JoinColumn(name = "interviewer_id", nullable = false)
     private User interviewer;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "interview_type", nullable = false, length = 30)
-    private InterviewType interviewType;
-
     @Column(name = "scheduled_at", nullable = false)
     private LocalDateTime scheduledAt;
 

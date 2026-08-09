@@ -2,8 +2,6 @@ package recruitmentmanagmentplatform.recruitmentmanagementplatform.interview;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EnumType;
-import jakarta.persistence.Enumerated;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -48,10 +46,6 @@ public class InterviewFeedback {
 
     @Column(name = "overall_score", precision = 4, scale = 2)
     private BigDecimal overallScore;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
-    private InterviewRecommendation recommendation;
 
     @Column(columnDefinition = "nvarchar(max)")
     private String comments;
