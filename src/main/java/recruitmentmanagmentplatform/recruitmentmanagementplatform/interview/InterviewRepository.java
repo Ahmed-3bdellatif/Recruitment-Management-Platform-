@@ -12,7 +12,4 @@ public interface InterviewRepository extends JpaRepository<Interview, Long> {
 
     List<Interview> findByStatus(InterviewStatus status);
 
-    List<Interview> findByScheduledAt(LocalDateTime scheduledAt);
-
-    List<Interview> findByScheduledAtBetween(LocalDateTime start, LocalDateTime end);
 }
