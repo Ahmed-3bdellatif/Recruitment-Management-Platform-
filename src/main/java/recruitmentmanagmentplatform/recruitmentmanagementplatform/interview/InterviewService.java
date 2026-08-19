@@ -138,15 +138,13 @@ public class InterviewService {
     public InterviewFeedback addFeedback(Long interviewId, InterviewFeedback feedback) {
         Interview interview = findInterviewById(interviewId);
 
-        if (interview.getStatus() == InterviewStatus.CANCELLED) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot add feedback to a cancelled interview");
+        if (interview.getStatus() != InterviewStatus.COMPLETED) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Feedback can only be submitted for a completed interview");
         }
 
         feedback.setId(null);
         feedback.setInterview(interview);
-
-        interview.setStatus(InterviewStatus.COMPLETED);
-        interviewRepository.save(interview);
 
         return interviewFeedbackRepository.save(feedback);
     }
@@ -167,6 +165,10 @@ public class InterviewService {
         feedback.setComments(updatedFeedback.getComments());
 
         return interviewFeedbackRepository.save(feedback);
+    }
+
+    public void deleteFeedback(Long feedbackId) {
+        interviewFeedbackRepository.delete(findFeedbackById(feedbackId));
     }
 
     public void deleteInterview(Long id) {
