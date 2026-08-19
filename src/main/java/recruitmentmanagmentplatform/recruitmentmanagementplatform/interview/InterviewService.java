@@ -77,14 +77,7 @@ public class InterviewService {
         return interviewRepository.findByStatus(status);
     }
 
-    @Transactional(readOnly = true)
-    public List<Interview> getInterviewsBetween(LocalDateTime start, LocalDateTime end) {
-        if (start == null || end == null || end.isBefore(start)) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Valid interview date range is required");
-        }
-
-        return interviewRepository.findByScheduledAtBetween(start, end);
-    }
+ 
 
     public Interview updateInterview(Long id, Long interviewerId, LocalDateTime scheduledAt, String meetingLink) {
         Interview interview = findInterviewById(id);
