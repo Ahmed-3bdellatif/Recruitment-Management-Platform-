@@ -23,10 +23,10 @@ public class HiringDecisionService {
     private final ApplicationRepository applicationRepository;
     private final UserRepository userRepository;
 
-    public HiringDecision createDecision(Long applicationId, HiringDecisionStatus decision, Long decidedByUserId,
+    public HiringDecision createDecision(Long applicationId, HiringDecisionStatus decision, String decidedByEmail,
             String reason) {
         Application application = findApplicationById(applicationId);
-        User decidedBy = findActiveUserById(decidedByUserId);
+        User decidedBy = findActiveUserByEmail(decidedByEmail);
 
         if (hiringDecisionRepository.existsByApplicationId(applicationId)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -106,8 +106,8 @@ public class HiringDecisionService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Application not found"));
     }
 
-    private User findActiveUserById(Long id) {
-        User user = userRepository.findById(id)
+    private User findActiveUserByEmail(String email) {
+        User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Decision maker not found"));
 
         if (user.getStatus() != UserStatus.ACTIVE) {

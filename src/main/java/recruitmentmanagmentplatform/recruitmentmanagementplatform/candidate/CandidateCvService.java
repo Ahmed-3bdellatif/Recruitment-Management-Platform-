@@ -20,7 +20,7 @@ public class CandidateCvService {
     private final UserRepository userRepository;
 
     public CandidateCv createCv(Long candidateId, String fileName, String fileUrl,
-            String fileType, Long uploadedByUserId, String parsedText) {
+            String fileType, String uploadedByEmail, String parsedText) {
         Candidate candidate = findCandidateById(candidateId);
 
         CandidateCv cv = CandidateCv.builder()
@@ -28,7 +28,7 @@ public class CandidateCvService {
                 .fileName(requireText(fileName, "CV file name is required"))
                 .fileUrl(requireText(fileUrl, "CV file URL is required"))
                 .fileType(normalizeOptionalText(fileType))
-                .uploadedBy(findOptionalUserById(uploadedByUserId))
+                .uploadedBy(findUserByEmail(uploadedByEmail))
                 .parsedText(parsedText)
                 .build();
 
@@ -52,13 +52,12 @@ public class CandidateCvService {
     }
 
     public CandidateCv updateCv(Long id, String fileName, String fileUrl,
-            String fileType, Long uploadedByUserId, String parsedText) {
+            String fileType, String parsedText) {
         CandidateCv cv = findCvById(id);
 
         cv.setFileName(requireText(fileName, "CV file name is required"));
         cv.setFileUrl(requireText(fileUrl, "CV file URL is required"));
         cv.setFileType(normalizeOptionalText(fileType));
-        cv.setUploadedBy(findOptionalUserById(uploadedByUserId));
         cv.setParsedText(parsedText);
 
         return candidateCvRepository.save(cv);
@@ -84,12 +83,8 @@ public class CandidateCvService {
         }
     }
 
-    private User findOptionalUserById(Long id) {
-        if (id == null) {
-            return null;
-        }
-
-        return userRepository.findById(id)
+    private User findUserByEmail(String email) {
+        return userRepository.findByEmail(email)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Uploader not found"));
     }
 

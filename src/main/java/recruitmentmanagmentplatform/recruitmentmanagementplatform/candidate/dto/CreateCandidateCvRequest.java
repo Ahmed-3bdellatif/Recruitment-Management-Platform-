@@ -26,7 +26,5 @@ public class CreateCandidateCvRequest {
 
     private String fileType;
 
-    private Long uploadedByUserId;
-
     private String parsedText;
 }

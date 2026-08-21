@@ -18,8 +18,8 @@ public class JobService {
     private final JobRepository jobRepository;
     private final UserRepository userRepository;
 
-    public Job createJob(Job job, Long createdByUserId) {
-        User createdBy = userRepository.findById(createdByUserId)
+    public Job createJob(Job job, String createdByEmail) {
+        User createdBy = userRepository.findByEmail(createdByEmail)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
         job.setId(null);

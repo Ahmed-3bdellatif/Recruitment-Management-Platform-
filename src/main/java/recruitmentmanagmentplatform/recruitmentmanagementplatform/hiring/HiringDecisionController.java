@@ -5,6 +5,8 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -52,11 +54,11 @@ public class HiringDecisionController {
     @PostMapping
     public ResponseEntity<HiringDecisionResponse> createDecision(
             @Valid @RequestBody CreateHiringDecisionRequest request,
-            @RequestParam Long decidedByUserId) {
+            @AuthenticationPrincipal UserDetails principal) {
         HiringDecision decision = hiringDecisionService.createDecision(
                 request.getApplicationId(),
                 request.getDecision(),
-                decidedByUserId,
+                principal.getUsername(),
                 request.getReason());
 
         return ResponseEntity.status(HttpStatus.CREATED)

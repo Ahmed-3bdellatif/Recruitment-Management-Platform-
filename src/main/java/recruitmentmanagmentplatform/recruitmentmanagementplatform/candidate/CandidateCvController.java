@@ -5,6 +5,8 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -42,13 +44,14 @@ public class CandidateCvController {
 
     @PostMapping
     public ResponseEntity<CandidateCvResponse> createCv(
-            @Valid @RequestBody CreateCandidateCvRequest request) {
+            @Valid @RequestBody CreateCandidateCvRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         CandidateCv cv = candidateCvService.createCv(
                 request.getCandidateId(),
                 request.getFileName(),
                 request.getFileUrl(),
                 request.getFileType(),
-                request.getUploadedByUserId(),
+                principal.getUsername(),
                 request.getParsedText());
 
         return ResponseEntity.status(HttpStatus.CREATED).body(CandidateCvResponse.fromEntity(cv));
@@ -63,7 +66,6 @@ public class CandidateCvController {
                 request.getFileName(),
                 request.getFileUrl(),
                 request.getFileType(),
-                request.getUploadedByUserId(),
                 request.getParsedText());
 
         return CandidateCvResponse.fromEntity(cv);

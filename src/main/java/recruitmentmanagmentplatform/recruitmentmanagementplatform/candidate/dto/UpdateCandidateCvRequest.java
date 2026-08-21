@@ -22,7 +22,5 @@ public class UpdateCandidateCvRequest {
 
     private String fileType;
 
-    private Long uploadedByUserId;
-
     private String parsedText;
 }

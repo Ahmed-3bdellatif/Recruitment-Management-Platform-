@@ -5,6 +5,8 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -41,7 +43,7 @@ public class JobController {
     @PostMapping
     public ResponseEntity<JobResponse> createJob(
             @Valid @RequestBody CreateJobRequest request,
-            @RequestParam Long createdByUserId) {
+            @AuthenticationPrincipal UserDetails principal) {
         Job job = Job.builder()
                 .title(request.getTitle())
                 .description(request.getDescription())
@@ -50,7 +52,7 @@ public class JobController {
                 .employmentType(request.getEmploymentType())
                 .build();
 
-        Job createdJob = jobService.createJob(job, createdByUserId);
+        Job createdJob = jobService.createJob(job, principal.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED).body(JobResponse.fromEntity(createdJob));
     }
 
