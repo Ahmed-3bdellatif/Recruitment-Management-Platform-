@@ -5,6 +5,7 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -23,6 +24,7 @@ import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.
 @RestController
 @RequestMapping("/api/candidate-cvs")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'HR', 'INTERVIEWER')")
 public class CandidateCvController {
 
     private final CandidateCvService candidateCvService;

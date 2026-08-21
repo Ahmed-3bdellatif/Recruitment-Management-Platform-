@@ -5,6 +5,9 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +24,7 @@ import recruitmentmanagmentplatform.recruitmentmanagementplatform.interview.dto.
 @RestController
 @RequestMapping("/api/interviews")
 @RequiredArgsConstructor
+@PreAuthorize("hasAnyRole('ADMIN', 'HR', 'INTERVIEWER')")
 public class InterviewController {
 
     private final InterviewService interviewService;
@@ -29,27 +33,36 @@ public class InterviewController {
     public List<InterviewResponse> getInterviews(
             @RequestParam(required = false) Long applicationId,
             @RequestParam(required = false) Long interviewerId,
-            @RequestParam(required = false) InterviewStatus status) {
+            @RequestParam(required = false) InterviewStatus status,
+            @AuthenticationPrincipal UserDetails principal) {
         List<Interview> interviews;
-        if (applicationId != null) {
+        if (principal.getAuthorities().stream().anyMatch(a ->
+                a.getAuthority().equals("ROLE_ADMIN") || a.getAuthority().equals("ROLE_HR"))) {
+            if (applicationId != null) {
             interviews = interviewService.getInterviewsByApplication(applicationId);
-        } else if (interviewerId != null) {
+            } else if (interviewerId != null) {
             interviews = interviewService.getInterviewsByInterviewer(interviewerId);
-        } else if (status != null) {
+            } else if (status != null) {
             interviews = interviewService.getInterviewsByStatus(status);
-        } else {
+            } else {
             interviews = interviewService.getAllInterviews();
+            }
+        } else {
+            interviews = interviewService.getInterviewsForUser(principal.getUsername());
         }
 
         return interviews.stream().map(InterviewResponse::fromEntity).toList();
     }
 
     @GetMapping("/{id}")
-    public InterviewResponse getInterview(@PathVariable Long id) {
-        return InterviewResponse.fromEntity(interviewService.getInterviewById(id));
+    public InterviewResponse getInterview(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails principal) {
+        return InterviewResponse.fromEntity(interviewService.getInterviewById(id, principal.getUsername()));
     }
 
     @PostMapping
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
     public ResponseEntity<InterviewResponse> scheduleInterview(
             @Valid @RequestBody CreateInterviewRequest request) {
         Interview interview = interviewService.scheduleInterview(
@@ -62,32 +75,38 @@ public class InterviewController {
     }
 
     @PutMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'INTERVIEWER')")
     public InterviewResponse updateInterview(
             @PathVariable Long id,
-            @RequestBody UpdateInterviewRequest request) {
+            @RequestBody UpdateInterviewRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         Interview interview;
         if (request.getScheduledAt() != null || request.getMeetingLink() != null) {
             interview = interviewService.updateInterview(
-                    id, null, request.getScheduledAt(), request.getMeetingLink());
+                    id, null, request.getScheduledAt(), request.getMeetingLink(), principal.getUsername());
         } else {
-            interview = interviewService.getInterviewById(id);
+            interview = interviewService.getInterviewById(id, principal.getUsername());
         }
 
         if (request.getStatus() != null) {
-            interview = interviewService.updateStatus(id, request.getStatus());
+            interview = interviewService.updateStatus(id, request.getStatus(), principal.getUsername());
         }
 
         return InterviewResponse.fromEntity(interview);
     }
 
     @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
     public ResponseEntity<InterviewResponse> cancelInterview(@PathVariable Long id) {
         return ResponseEntity.ok(
                 InterviewResponse.fromEntity(interviewService.cancelInterview(id)));
     }
 
     @PutMapping("/{id}/complete")
-    public InterviewResponse completeInterview(@PathVariable Long id) {
-        return InterviewResponse.fromEntity(interviewService.completeInterview(id));
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'INTERVIEWER')")
+    public InterviewResponse completeInterview(
+            @PathVariable Long id,
+            @AuthenticationPrincipal UserDetails principal) {
+        return InterviewResponse.fromEntity(interviewService.completeInterview(id, principal.getUsername()));
     }
 }

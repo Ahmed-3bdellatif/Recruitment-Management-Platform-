@@ -51,8 +51,10 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public Interview getInterviewById(Long id) {
-        return findInterviewById(id);
+    public Interview getInterviewById(Long id, String requesterEmail) {
+        Interview interview = findInterviewById(id);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
+        return interview;
     }
 
     @Transactional(readOnly = true)
@@ -73,14 +75,23 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
+    public List<Interview> getInterviewsForUser(String email) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        return interviewRepository.findByInterviewerId(user.getId());
+    }
+
+    @Transactional(readOnly = true)
     public List<Interview> getInterviewsByStatus(InterviewStatus status) {
         return interviewRepository.findByStatus(status);
     }
 
  
 
-    public Interview updateInterview(Long id, Long interviewerId, LocalDateTime scheduledAt, String meetingLink) {
+    public Interview updateInterview(Long id, Long interviewerId, LocalDateTime scheduledAt, String meetingLink,
+            String requesterEmail) {
         Interview interview = findInterviewById(id);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
 
         if (interview.getStatus() == InterviewStatus.CANCELLED
                 || interview.getStatus() == InterviewStatus.COMPLETED) {
@@ -100,19 +111,21 @@ public class InterviewService {
         return interviewRepository.save(interview);
     }
 
-    public Interview updateStatus(Long id, InterviewStatus status) {
+    public Interview updateStatus(Long id, InterviewStatus status, String requesterEmail) {
         if (status == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Interview status is required");
         }
 
         Interview interview = findInterviewById(id);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
         interview.setStatus(status);
 
         return interviewRepository.save(interview);
     }
 
-    public Interview completeInterview(Long id) {
+    public Interview completeInterview(Long id, String requesterEmail) {
         Interview interview = findInterviewById(id);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
 
         if (interview.getStatus() == InterviewStatus.CANCELLED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot complete a cancelled interview");
@@ -135,8 +148,9 @@ public class InterviewService {
         return interviewRepository.save(interview);
     }
 
-    public InterviewFeedback addFeedback(Long interviewId, InterviewFeedback feedback) {
+    public InterviewFeedback addFeedback(Long interviewId, InterviewFeedback feedback, String requesterEmail) {
         Interview interview = findInterviewById(interviewId);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
 
         if (interview.getStatus() != InterviewStatus.COMPLETED) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
@@ -150,13 +164,15 @@ public class InterviewService {
     }
 
     @Transactional(readOnly = true)
-    public List<InterviewFeedback> getFeedbackByInterview(Long interviewId) {
-        ensureInterviewExists(interviewId);
+    public List<InterviewFeedback> getFeedbackByInterview(Long interviewId, String requesterEmail) {
+        Interview interview = findInterviewById(interviewId);
+        ensureInterviewerOwnsInterview(interview, requesterEmail);
         return interviewFeedbackRepository.findByInterviewId(interviewId);
     }
 
-    public InterviewFeedback updateFeedback(Long feedbackId, InterviewFeedback updatedFeedback) {
+    public InterviewFeedback updateFeedback(Long feedbackId, InterviewFeedback updatedFeedback, String requesterEmail) {
         InterviewFeedback feedback = findFeedbackById(feedbackId);
+        ensureInterviewerOwnsInterview(feedback.getInterview(), requesterEmail);
 
         feedback.setTechnicalScore(updatedFeedback.getTechnicalScore());
         feedback.setCommunicationScore(updatedFeedback.getCommunicationScore());
@@ -167,8 +183,10 @@ public class InterviewService {
         return interviewFeedbackRepository.save(feedback);
     }
 
-    public void deleteFeedback(Long feedbackId) {
-        interviewFeedbackRepository.delete(findFeedbackById(feedbackId));
+    public void deleteFeedback(Long feedbackId, String requesterEmail) {
+        InterviewFeedback feedback = findFeedbackById(feedbackId);
+        ensureInterviewerOwnsInterview(feedback.getInterview(), requesterEmail);
+        interviewFeedbackRepository.delete(feedback);
     }
 
     public void deleteInterview(Long id) {
@@ -179,6 +197,19 @@ public class InterviewService {
     private Interview findInterviewById(Long id) {
         return interviewRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Interview not found"));
+    }
+
+    private void ensureInterviewerOwnsInterview(Interview interview, String requesterEmail) {
+        User requester = userRepository.findByEmail(requesterEmail)
+            .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Authenticated user not found"));
+        boolean isManager = requester.getRoles().stream()
+            .anyMatch(role -> role.getName() == RoleName.ADMIN || role.getName() == RoleName.HR);
+        boolean isAssignedInterviewer = interview.getInterviewer() != null
+            && requesterEmail.equalsIgnoreCase(interview.getInterviewer().getEmail());
+
+        if (!isManager && !isAssignedInterviewer) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "You are not assigned to this interview");
+        }
     }
 
     private InterviewFeedback findFeedbackById(Long id) {

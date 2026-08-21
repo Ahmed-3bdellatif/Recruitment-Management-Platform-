@@ -5,6 +5,9 @@ import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -24,8 +27,11 @@ public class InterviewFeedbackController {
     private final InterviewService interviewService;
 
     @GetMapping("/api/interviews/{interviewId}/feedback")
-    public List<InterviewFeedbackResponse> getFeedback(@PathVariable Long interviewId) {
-        return interviewService.getFeedbackByInterview(interviewId).stream()
+        @PreAuthorize("hasAnyRole('ADMIN', 'HR', 'INTERVIEWER')")
+        public List<InterviewFeedbackResponse> getFeedback(
+                        @PathVariable Long interviewId,
+                        @AuthenticationPrincipal UserDetails principal) {
+                return interviewService.getFeedbackByInterview(interviewId, principal.getUsername()).stream()
                 .map(InterviewFeedbackResponse::fromEntity)
                 .toList();
     }
@@ -33,7 +39,8 @@ public class InterviewFeedbackController {
     @PostMapping("/api/interviews/{interviewId}/feedback")
     public ResponseEntity<InterviewFeedbackResponse> submitFeedback(
             @PathVariable Long interviewId,
-            @Valid @RequestBody CreateInterviewFeedbackRequest request) {
+            @Valid @RequestBody CreateInterviewFeedbackRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         InterviewFeedback feedback = InterviewFeedback.builder()
                 .technicalScore(request.getTechnicalScore())
                 .communicationScore(request.getCommunicationScore())
@@ -42,7 +49,7 @@ public class InterviewFeedbackController {
                 .comments(request.getComments())
                 .build();
 
-        InterviewFeedback savedFeedback = interviewService.addFeedback(interviewId, feedback);
+        InterviewFeedback savedFeedback = interviewService.addFeedback(interviewId, feedback, principal.getUsername());
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(InterviewFeedbackResponse.fromEntity(savedFeedback));
     }
@@ -50,7 +57,8 @@ public class InterviewFeedbackController {
     @PutMapping("/api/feedback/{id}")
     public InterviewFeedbackResponse updateFeedback(
             @PathVariable Long id,
-            @Valid @RequestBody UpdateInterviewFeedbackRequest request) {
+            @Valid @RequestBody UpdateInterviewFeedbackRequest request,
+            @AuthenticationPrincipal UserDetails principal) {
         InterviewFeedback feedback = InterviewFeedback.builder()
                 .technicalScore(request.getTechnicalScore())
                 .communicationScore(request.getCommunicationScore())
@@ -60,12 +68,14 @@ public class InterviewFeedbackController {
                 .build();
 
         return InterviewFeedbackResponse.fromEntity(
-                interviewService.updateFeedback(id, feedback));
+                interviewService.updateFeedback(id, feedback, principal.getUsername()));
     }
 
     @DeleteMapping("/api/feedback/{id}")
-    public ResponseEntity<Void> deleteFeedback(@PathVariable Long id) {
-        interviewService.deleteFeedback(id);
+        public ResponseEntity<Void> deleteFeedback(
+                        @PathVariable Long id,
+                        @AuthenticationPrincipal UserDetails principal) {
+                interviewService.deleteFeedback(id, principal.getUsername());
         return ResponseEntity.noContent().build();
     }
 }
