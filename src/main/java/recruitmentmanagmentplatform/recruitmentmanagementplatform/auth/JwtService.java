@@ -1,6 +1,7 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.auth;
 
 import io.jsonwebtoken.Jwts;
+import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.security.Keys;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
@@ -35,7 +36,7 @@ public class JwtService {
         Date expiresAt = new Date(issuedAt.getTime() + expiration.toMillis());
 
         return Jwts.builder()
-                .subject(user.getId().toString())
+            .subject(user.getEmail())
                 .claim("email", user.getEmail())
                 .claim("roles", user.getRoles().stream()
                         .map(role -> role.getName().name())
@@ -44,5 +45,22 @@ public class JwtService {
                 .expiration(expiresAt)
                 .signWith(signingKey)
                 .compact();
+    }
+
+    public String extractUsername(String token) {
+        return Jwts.parser()
+                .verifyWith(signingKey)
+                .build()
+                .parseSignedClaims(token)
+                .getPayload()
+                .getSubject();
+    }
+
+    public boolean isTokenValid(String token) {
+        try {
+            return extractUsername(token) != null;
+        } catch (JwtException | IllegalArgumentException exception) {
+            return false;
+        }
     }
 }
