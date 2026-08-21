@@ -69,6 +69,14 @@ public class AuthService {
         return createAuthResponse(user);
     }
 
+    @Transactional(readOnly = true)
+    public UserResponse getCurrentUser(String email) {
+        User user = userRepository.findByEmail(normalizeEmail(email))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+        return UserResponse.fromEntity(user);
+    }
+
     private AuthResponse createAuthResponse(User user) {
         return AuthResponse.builder()
                 .accessToken(jwtService.generateToken(user))
