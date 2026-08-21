@@ -1,6 +1,9 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.user.dto;
 
 import java.util.Set;
+import jakarta.validation.constraints.Email;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Getter;
@@ -19,11 +22,18 @@ import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.UserStatu
 @AllArgsConstructor
 public class CreateUserRequest {
 
+    @NotBlank
+    @Size(max = 150)
     private String fullName;
 
+    @NotBlank
+    @Email
+    @Size(max = 150)
     private String email;
 
-    private String passwordHash;
+    @NotBlank
+    @Size(min = 8, max = 100)
+    private String password;
 
     private String phone;
 
@@ -39,7 +49,7 @@ public class CreateUserRequest {
         return User.builder()
                 .fullName(fullName)
                 .email(email)
-                .passwordHash(passwordHash)
+                .passwordHash(password)
                 .phone(phone)
                 .status(status)
                 .authProvider(authProvider)

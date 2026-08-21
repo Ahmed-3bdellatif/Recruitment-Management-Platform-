@@ -6,6 +6,7 @@ import java.util.Objects;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -18,6 +19,7 @@ public class UserService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
     public User createUser(User user) {
         String email = normalizeEmail(user.getEmail());
@@ -35,6 +37,13 @@ public class UserService {
 
         if (user.getAuthProvider() == null) {
             user.setAuthProvider(AuthProvider.LOCAL);
+        }
+
+        if (user.getAuthProvider() == AuthProvider.LOCAL) {
+            if (!StringUtils.hasText(user.getPasswordHash())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Password is required");
+            }
+            user.setPasswordHash(passwordEncoder.encode(user.getPasswordHash()));
         }
 
         user.setRoles(resolveRoles(user.getRoles()));
