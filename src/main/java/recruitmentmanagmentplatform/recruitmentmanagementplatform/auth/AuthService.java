@@ -1,6 +1,7 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.auth;
 
 import java.util.Set;
+import java.util.Optional;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -30,6 +31,7 @@ public class AuthService {
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final Optional<LdapAuthenticationService> ldapAuthenticationService;
 
     public AuthResponse register(RegisterRequest request) {
         String email = normalizeEmail(request.getEmail());
@@ -54,19 +56,34 @@ public class AuthService {
         return createAuthResponse(userRepository.save(user));
     }
 
-    @Transactional(readOnly = true)
     public AuthResponse login(LoginRequest request) {
-        User user = userRepository.findByEmail(normalizeEmail(request.getEmail()))
-                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"));
+        String email = normalizeEmail(request.getEmail());
+        User user = userRepository.findByEmail(email).orElse(null);
 
-        if (user.getAuthProvider() != AuthProvider.LOCAL
-                || user.getStatus() != UserStatus.ACTIVE
-                || !StringUtils.hasText(user.getPasswordHash())
-                || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+        if (user != null && user.getStatus() != UserStatus.ACTIVE) {
             throw new BadCredentialsException("Invalid email or password");
         }
 
-        return createAuthResponse(user);
+        if (user != null && user.getAuthProvider() == AuthProvider.LOCAL) {
+            if (!StringUtils.hasText(user.getPasswordHash())
+                    || !passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
+                throw new BadCredentialsException("Invalid email or password");
+            }
+
+            return createAuthResponse(user);
+        }
+
+        LdapUserProfile ldapProfile = ldapAuthenticationService
+                .orElseThrow(() -> new BadCredentialsException("Invalid email or password"))
+                .authenticate(email, request.getPassword());
+
+        if (user == null) {
+            user = provisionLdapUser(ldapProfile);
+        } else {
+            synchronizeLdapUser(user, ldapProfile);
+        }
+
+        return createAuthResponse(userRepository.save(user));
     }
 
     @Transactional(readOnly = true)
@@ -84,6 +101,41 @@ public class AuthService {
                 .expiresIn(jwtService.getExpiration().toMillis())
                 .user(UserResponse.fromEntity(user))
                 .build();
+    }
+
+    private User provisionLdapUser(LdapUserProfile profile) {
+        User user = User.builder()
+                .fullName(profile.fullName())
+                .email(normalizeEmail(profile.email()))
+                .status(UserStatus.ACTIVE)
+                .authProvider(AuthProvider.LDAP)
+                .ldapDn(profile.ldapDn())
+                .phone(profile.phone())
+                .roles(resolveLdapRoles(profile.roleNames()))
+                .build();
+        return user;
+    }
+
+    private void synchronizeLdapUser(User user, LdapUserProfile profile) {
+        user.setFullName(profile.fullName());
+        user.setPhone(profile.phone());
+        user.setLdapDn(profile.ldapDn());
+        user.setAuthProvider(AuthProvider.LDAP);
+        user.setPasswordHash(null);
+        user.setRoles(resolveLdapRoles(profile.roleNames()));
+    }
+
+    private Set<Role> resolveLdapRoles(Set<RoleName> roleNames) {
+        Set<Role> roles = new java.util.HashSet<>();
+        Set<RoleName> names = roleNames == null || roleNames.isEmpty()
+                ? Set.of(RoleName.INTERVIEWER)
+                : roleNames;
+        for (RoleName roleName : names) {
+            roles.add(roleRepository.findByName(roleName)
+                    .orElseThrow(() -> new ResponseStatusException(
+                            HttpStatus.INTERNAL_SERVER_ERROR, "LDAP role is not configured")));
+        }
+        return roles;
     }
 
     private String normalizeEmail(String email) {

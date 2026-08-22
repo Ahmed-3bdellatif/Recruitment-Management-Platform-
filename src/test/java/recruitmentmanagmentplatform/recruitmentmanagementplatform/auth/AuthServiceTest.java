@@ -43,11 +43,16 @@ class AuthServiceTest {
     @Mock
     private JwtService jwtService;
 
+    @Mock
+    private LdapAuthenticationService ldapAuthenticationService;
+
     private AuthService authService;
 
     @BeforeEach
     void setUp() {
-        authService = new AuthService(userRepository, roleRepository, passwordEncoder, jwtService);
+        authService = new AuthService(
+            userRepository, roleRepository, passwordEncoder, jwtService,
+            Optional.of(ldapAuthenticationService));
     }
 
     @Test
@@ -142,6 +147,37 @@ class AuthServiceTest {
         when(userRepository.findByEmail(eq("user@example.com"))).thenReturn(Optional.of(user));
 
         assertThrows(BadCredentialsException.class, () -> authService.login(request));
+        verify(passwordEncoder, never()).matches(any(String.class), any(String.class));
+    }
+
+    @Test
+    void loginProvisionsMissingLdapUserAndSynchronizesRole() {
+        LoginRequest request = new LoginRequest();
+        request.setEmail("ldap@example.com");
+        request.setPassword("ldap-password");
+
+        Role hr = Role.builder().id(2L).name(RoleName.HR).build();
+        LdapUserProfile profile = new LdapUserProfile(
+                "ldap@example.com", "LDAP User", "555-0101",
+                "uid=ldap,ou=people,dc=example,dc=com", Set.of(RoleName.HR));
+        when(userRepository.findByEmail("ldap@example.com")).thenReturn(Optional.empty());
+        when(ldapAuthenticationService.authenticate("ldap@example.com", "ldap-password"))
+                .thenReturn(profile);
+        when(roleRepository.findByName(RoleName.HR)).thenReturn(Optional.of(hr));
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User savedUser = invocation.getArgument(0);
+            savedUser.setId(11L);
+            return savedUser;
+        });
+        when(jwtService.generateToken(any(User.class))).thenReturn("ldap-token");
+        when(jwtService.getExpiration()).thenReturn(java.time.Duration.ofMinutes(15));
+
+        AuthResponse response = authService.login(request);
+
+        assertEquals("ldap-token", response.getAccessToken());
+        assertEquals("ldap@example.com", response.getUser().getEmail());
+        assertEquals(Set.of(RoleName.HR), response.getUser().getRoles());
+        verify(ldapAuthenticationService).authenticate("ldap@example.com", "ldap-password");
         verify(passwordEncoder, never()).matches(any(String.class), any(String.class));
     }
 }
