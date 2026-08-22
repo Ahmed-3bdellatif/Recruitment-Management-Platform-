@@ -9,7 +9,8 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.ldap.core.DirContextAdapter;
+import org.springframework.ldap.core.DirContextOperations;
+import org.springframework.ldap.core.LdapTemplate;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -22,7 +23,10 @@ class LdapAuthenticationServiceTest {
     private AuthenticationProvider authenticationProvider;
 
     @Mock
-    private DirContextAdapter principal;
+    private LdapTemplate ldapTemplate;
+
+    @Mock
+    private DirContextOperations principal;
 
     @Mock
     private Authentication authentication;
@@ -40,7 +44,7 @@ class LdapAuthenticationServiceTest {
         when(principal.getDn()).thenReturn(new javax.naming.ldap.LdapName(
                 "uid=employee,ou=people,dc=example,dc=com"));
 
-        LdapUserProfile profile = new LdapAuthenticationService(authenticationProvider)
+        LdapUserProfile profile = new LdapAuthenticationService(authenticationProvider, ldapTemplate)
                 .authenticate("employee@example.com", "password");
 
         assertEquals("employee@example.com", profile.email());

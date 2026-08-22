@@ -1,0 +1,13 @@
+services:
+  openldap:
+    image: osixia/openldap:1.5.0
+    container_name: rmp-openldap
+    environment:
+      LDAP_ORGANISATION: Example
+      LDAP_DOMAIN: example.com
+      LDAP_BASE_DN: dc=example,dc=com
+      LDAP_ADMIN_PASSWORD: admin
+    ports:
+      - "389:389"
+    volumes:
+      - ./ldap/bootstrap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro
