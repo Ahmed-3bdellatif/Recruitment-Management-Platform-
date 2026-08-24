@@ -15,6 +15,12 @@ import org.springframework.security.ldap.userdetails.LdapUserDetails;
 import org.springframework.stereotype.Service;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.RoleName;
 
+import javax.naming.InvalidNameException;
+import javax.naming.Name;
+import javax.naming.ldap.LdapName;
+import org.springframework.ldap.core.support.BaseLdapPathSource;
+import org.springframework.ldap.support.LdapUtils;
+
 @Service
 @Profile("ldap")
 @RequiredArgsConstructor
@@ -49,10 +55,29 @@ public class LdapAuthenticationService {
         if (principal instanceof DirContextOperations context) {
             return context;
         }
+        if (principal instanceof LdapUserDetailsContextAdapter adapter) {
+            return adapter.getContext();
+        }
         if (principal instanceof LdapUserDetails ldapUser) {
-            return ldapTemplate.lookupContext(ldapUser.getDn());
+            return lookupRelativeContext(ldapUser.getDn());
         }
         throw new IllegalStateException("Unsupported LDAP principal type: " + principal.getClass().getName());
+    }
+
+    private DirContextOperations lookupRelativeContext(String dnString) {
+        try {
+            LdapName dn = new LdapName(dnString);
+            if (ldapTemplate.getContextSource() instanceof BaseLdapPathSource baseSource) {
+                Name baseDn = baseSource.getBaseLdapPath();
+                if (baseDn != null && !baseDn.isEmpty() && dn.startsWith(baseDn)) {
+                    Name relativeName = LdapUtils.removeFirst(dn, baseDn);
+                    return ldapTemplate.lookupContext(relativeName);
+                }
+            }
+            return ldapTemplate.lookupContext(dn);
+        } catch (InvalidNameException exception) {
+            return ldapTemplate.lookupContext(dnString);
+        }
     }
 
     private RoleName toRoleName(String authority) {

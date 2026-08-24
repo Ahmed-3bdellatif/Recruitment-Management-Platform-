@@ -8,6 +8,7 @@ import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.AuthProvider;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.Role;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.RoleName;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.User;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.UserStatus;
@@ -56,7 +57,7 @@ public class UserResponse {
         }
 
         return user.getRoles().stream()
-                .map(role -> role.getName())
-                .collect(Collectors.toSet());
+                .map(Role::getName)
+                .collect(Collectors.toCollection(java.util.TreeSet::new));
     }
 }

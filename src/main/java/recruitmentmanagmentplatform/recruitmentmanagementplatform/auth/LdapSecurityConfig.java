@@ -13,12 +13,14 @@ import org.springframework.ldap.core.support.BaseLdapPathContextSource;
 import org.springframework.ldap.core.support.LdapContextSource;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.springframework.security.core.GrantedAuthority;
-import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.ldap.authentication.BindAuthenticator;
 import org.springframework.security.ldap.authentication.LdapAuthenticationProvider;
 import org.springframework.security.ldap.search.FilterBasedLdapUserSearch;
 import org.springframework.security.ldap.userdetails.DefaultLdapAuthoritiesPopulator;
+import org.springframework.security.ldap.userdetails.UserDetailsContextMapper;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.ldap.core.DirContextAdapter;
+import org.springframework.ldap.core.DirContextOperations;
 import org.springframework.security.authentication.AuthenticationProvider;
 
 @Configuration
@@ -67,7 +69,26 @@ public class LdapSecurityConfig {
     }
 
     @Bean
-    AuthenticationProvider ldapAuthenticationProvider(BaseLdapPathContextSource contextSource) {
+    UserDetailsContextMapper userDetailsContextMapper() {
+        return new UserDetailsContextMapper() {
+            @Override
+            public UserDetails mapUserFromContext(
+                    DirContextOperations ctx,
+                    String username,
+                    java.util.Collection<? extends GrantedAuthority> authorities) {
+                return new LdapUserDetailsContextAdapter(ctx, username, authorities);
+            }
+
+            @Override
+            public void mapUserToContext(UserDetails user, DirContextAdapter ctx) {
+            }
+        };
+    }
+
+    @Bean
+    AuthenticationProvider ldapAuthenticationProvider(
+            BaseLdapPathContextSource contextSource,
+            UserDetailsContextMapper userDetailsContextMapper) {
         BindAuthenticator authenticator = new BindAuthenticator(contextSource);
         authenticator.setUserSearch(new FilterBasedLdapUserSearch(
                 "", "(mail={0})", contextSource));
@@ -79,24 +100,26 @@ public class LdapSecurityConfig {
         authorities.setRolePrefix("");
         authorities.setAuthorityMapper(this::mapGroupAttributes);
 
-        return new LdapAuthenticationProvider(authenticator, authorities);
+        LdapAuthenticationProvider provider = new LdapAuthenticationProvider(authenticator, authorities);
+        provider.setUserDetailsContextMapper(userDetailsContextMapper);
+        return provider;
     }
 
     private GrantedAuthority mapGroupAttributes(Map<String, java.util.List<String>> attributes) {
-        String group = attributes.values().stream()
+        Set<String> allValues = attributes.values().stream()
                 .flatMap(java.util.Collection::stream)
-                .findFirst()
-                .orElse("")
-                .toLowerCase(Locale.ROOT);
-        if (group.equals(adminGroup.toLowerCase(Locale.ROOT))) {
+                .map(v -> v.toLowerCase(Locale.ROOT))
+                .collect(java.util.stream.Collectors.toSet());
+
+        if (allValues.contains(adminGroup.toLowerCase(Locale.ROOT))) {
             return new SimpleGrantedAuthority("ROLE_ADMIN");
         }
-        if (group.equals(hrGroup.toLowerCase(Locale.ROOT))) {
+        if (allValues.contains(hrGroup.toLowerCase(Locale.ROOT))) {
             return new SimpleGrantedAuthority("ROLE_HR");
         }
-        if (group.equals(interviewerGroup.toLowerCase(Locale.ROOT))) {
+        if (allValues.contains(interviewerGroup.toLowerCase(Locale.ROOT))) {
             return new SimpleGrantedAuthority("ROLE_INTERVIEWER");
-        };
+        }
         return new SimpleGrantedAuthority("ROLE_UNMAPPED_LDAP_GROUP");
     }
 }

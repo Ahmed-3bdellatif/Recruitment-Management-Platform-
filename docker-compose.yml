@@ -9,5 +9,6 @@ services:
       LDAP_ADMIN_PASSWORD: admin
     ports:
       - "389:389"
+      - "8389:389"
     volumes:
       - ./ldap/bootstrap:/container/service/slapd/assets/config/bootstrap/ldif/custom:ro

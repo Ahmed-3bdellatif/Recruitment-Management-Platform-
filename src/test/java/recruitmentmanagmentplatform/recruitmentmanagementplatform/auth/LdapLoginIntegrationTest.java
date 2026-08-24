@@ -71,4 +71,17 @@ class LdapLoginIntegrationTest {
                 .andExpect(jsonPath("$.user.email").value("employee@example.com"))
                 .andExpect(jsonPath("$.user.roles[0]").value("HR"));
     }
+
+    @Test
+    void ldapLoginRejectsInvalidCredentials() throws Exception {
+        mockMvc.perform(post("/api/auth/login")
+                        .contentType(APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "email": "employee@example.com",
+                                  "password": "wrong-password"
+                                }
+                                """))
+                .andExpect(status().isUnauthorized());
+    }
 }
