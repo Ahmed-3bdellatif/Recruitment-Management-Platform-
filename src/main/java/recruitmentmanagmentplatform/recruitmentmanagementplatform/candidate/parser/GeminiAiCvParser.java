@@ -142,49 +142,9 @@ public class GeminiAiCvParser implements CvParser {
         }
         textJson = textJson.trim();
 
-        JsonNode parsed = objectMapper.readTree(textJson);
-
-        Set<String> skills = new HashSet<>();
-        JsonNode skillsNode = parsed.path("skills");
-        if (skillsNode.isArray()) {
-            for (JsonNode skill : skillsNode) {
-                if (StringUtils.hasText(skill.asText())) {
-                    skills.add(skill.asText().trim());
-                }
-            }
-        }
-
-        BigDecimal experience = null;
-        if (parsed.hasNonNull("yearsOfExperience")) {
-            try {
-                experience = BigDecimal.valueOf(parsed.get("yearsOfExperience").asDouble())
-                        .setScale(1, RoundingMode.HALF_UP);
-            } catch (Exception ignored) {
-            }
-        }
-
-        return ParsedCvData.builder()
-                .fullName(textOrNull(parsed, "fullName"))
-                .email(textOrNull(parsed, "email"))
-                .phone(textOrNull(parsed, "phone"))
-                .linkedinUrl(textOrNull(parsed, "linkedinUrl"))
-                .githubUrl(textOrNull(parsed, "githubUrl"))
-                .currentTitle(textOrNull(parsed, "currentTitle"))
-                .yearsOfExperience(experience)
-                .location(textOrNull(parsed, "location"))
-                .skills(skills)
-                .education(textOrNull(parsed, "education"))
-                .summary(textOrNull(parsed, "summary"))
-                .rawText(rawText)
-                .parserEngine(getEngineName())
-                .build();
-    }
-
-    private String textOrNull(JsonNode node, String fieldName) {
-        if (node.hasNonNull(fieldName)) {
-            String value = node.get(fieldName).asText();
-            return StringUtils.hasText(value) ? value.trim() : null;
-        }
-        return null;
+        ParsedCvData data = objectMapper.readValue(textJson, ParsedCvData.class);
+        data.setRawText(rawText);
+        data.setParserEngine(getEngineName());
+        return data;
     }
 }

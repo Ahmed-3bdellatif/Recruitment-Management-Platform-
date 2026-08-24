@@ -1,5 +1,6 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.parser;
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.Set;
@@ -14,6 +15,7 @@ import lombok.Setter;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
+@JsonIgnoreProperties(ignoreUnknown = true)
 public class ParsedCvData {
 
     private String fullName;

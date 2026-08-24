@@ -2,8 +2,10 @@ package recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.par
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.function.Consumer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -13,14 +15,30 @@ import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.Cand
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.CandidateTagRepository;
 
 @Service
+@Primary
 @RequiredArgsConstructor
 @Slf4j
-public class CvParsingService {
+public class CvParsingService implements CvParser {
 
     private final RuleBasedCvParser ruleBasedCvParser;
     private final GeminiAiCvParser geminiAiCvParser;
     private final CandidateTagRepository candidateTagRepository;
     private final CandidateRepository candidateRepository;
+
+    @Override
+    public ParsedCvData parse(String rawText) {
+        return parseText(rawText);
+    }
+
+    @Override
+    public String getEngineName() {
+        return geminiAiCvParser.isAvailable() ? geminiAiCvParser.getEngineName() : ruleBasedCvParser.getEngineName();
+    }
+
+    @Override
+    public boolean isAvailable() {
+        return true;
+    }
 
     public ParsedCvData parseText(String rawText) {
         if (!StringUtils.hasText(rawText)) {
@@ -46,41 +64,18 @@ public class CvParsingService {
             return;
         }
 
-        boolean modified = false;
+        boolean[] modified = {false};
 
-        if (!StringUtils.hasText(candidate.getFullName()) && StringUtils.hasText(data.getFullName())) {
-            candidate.setFullName(data.getFullName());
-            modified = true;
-        }
-
-        if (!StringUtils.hasText(candidate.getPhone()) && StringUtils.hasText(data.getPhone())) {
-            candidate.setPhone(data.getPhone());
-            modified = true;
-        }
-
-        if (!StringUtils.hasText(candidate.getLinkedinUrl()) && StringUtils.hasText(data.getLinkedinUrl())) {
-            candidate.setLinkedinUrl(data.getLinkedinUrl());
-            modified = true;
-        }
-
-        if (!StringUtils.hasText(candidate.getGithubUrl()) && StringUtils.hasText(data.getGithubUrl())) {
-            candidate.setGithubUrl(data.getGithubUrl());
-            modified = true;
-        }
-
-        if (!StringUtils.hasText(candidate.getCurrentTitle()) && StringUtils.hasText(data.getCurrentTitle())) {
-            candidate.setCurrentTitle(data.getCurrentTitle());
-            modified = true;
-        }
+        setIfBlank(candidate.getFullName(), data.getFullName(), val -> { candidate.setFullName(val); modified[0] = true; });
+        setIfBlank(candidate.getPhone(), data.getPhone(), val -> { candidate.setPhone(val); modified[0] = true; });
+        setIfBlank(candidate.getLinkedinUrl(), data.getLinkedinUrl(), val -> { candidate.setLinkedinUrl(val); modified[0] = true; });
+        setIfBlank(candidate.getGithubUrl(), data.getGithubUrl(), val -> { candidate.setGithubUrl(val); modified[0] = true; });
+        setIfBlank(candidate.getCurrentTitle(), data.getCurrentTitle(), val -> { candidate.setCurrentTitle(val); modified[0] = true; });
+        setIfBlank(candidate.getLocation(), data.getLocation(), val -> { candidate.setLocation(val); modified[0] = true; });
 
         if (candidate.getYearsOfExperience() == null && data.getYearsOfExperience() != null) {
             candidate.setYearsOfExperience(data.getYearsOfExperience());
-            modified = true;
-        }
-
-        if (!StringUtils.hasText(candidate.getLocation()) && StringUtils.hasText(data.getLocation())) {
-            candidate.setLocation(data.getLocation());
-            modified = true;
+            modified[0] = true;
         }
 
         if (data.getSkills() != null && !data.getSkills().isEmpty()) {
@@ -93,14 +88,21 @@ public class CvParsingService {
                     String cleanSkill = skill.trim();
                     CandidateTag tag = candidateTagRepository.findByNameIgnoreCase(cleanSkill)
                             .orElseGet(() -> candidateTagRepository.save(CandidateTag.builder().name(cleanSkill).build()));
-                    candidate.getTags().add(tag);
-                    modified = true;
+                    if (candidate.getTags().add(tag)) {
+                        modified[0] = true;
+                    }
                 }
             }
         }
 
-        if (modified) {
+        if (modified[0]) {
             candidateRepository.save(candidate);
+        }
+    }
+
+    private void setIfBlank(String currentVal, String newVal, Consumer<String> setter) {
+        if (!StringUtils.hasText(currentVal) && StringUtils.hasText(newVal)) {
+            setter.accept(newVal.trim());
         }
     }
 }
