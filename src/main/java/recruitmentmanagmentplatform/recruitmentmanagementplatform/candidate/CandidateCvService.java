@@ -1,23 +1,43 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.Resource;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.BulkCvUploadResponse;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.BulkUploadFailure;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.CandidateCvResponse;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.storage.FileStorageService;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.User;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.UserRepository;
 
 @Service
 @RequiredArgsConstructor
 @Transactional
+@Slf4j
 public class CandidateCvService {
+
+    private static final Pattern STRICT_EMAIL_PATTERN = Pattern.compile("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    private static final Pattern FALLBACK_EMAIL_PATTERN = Pattern.compile("(?i)[a-z0-9._%+-]+@[a-z0-9.-]+\\.[a-z]{2,}");
 
     private final CandidateCvRepository candidateCvRepository;
     private final CandidateRepository candidateRepository;
     private final UserRepository userRepository;
+    private final FileStorageService fileStorageService;
 
     public CandidateCv createCv(Long candidateId, String fileName, String fileUrl,
             String fileType, String uploadedByEmail, String parsedText) {
@@ -33,6 +53,73 @@ public class CandidateCvService {
                 .build();
 
         return candidateCvRepository.save(cv);
+    }
+
+    public CandidateCv uploadCv(Long candidateId, MultipartFile file, String uploadedByEmail) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File to upload cannot be empty");
+        }
+
+        Candidate candidate = findCandidateById(candidateId);
+        User uploader = findUserByEmail(uploadedByEmail);
+
+        String originalFilename = StringUtils.cleanPath(
+                file.getOriginalFilename() != null ? file.getOriginalFilename() : "cv_file");
+        String storedPath = fileStorageService.storeFile(file, "cvs");
+        String fileType = determineFileType(originalFilename, file.getContentType());
+        String parsedText = fileStorageService.extractTextIfPossible(file);
+
+        CandidateCv cv = CandidateCv.builder()
+                .candidate(candidate)
+                .fileName(originalFilename)
+                .fileUrl(storedPath)
+                .fileType(fileType)
+                .uploadedBy(uploader)
+                .parsedText(parsedText)
+                .build();
+
+        return candidateCvRepository.save(cv);
+    }
+
+    public BulkCvUploadResponse bulkUploadCvs(List<MultipartFile> files, Long defaultCandidateId, String uploadedByEmail) {
+        if (files == null || files.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "No files provided for bulk upload");
+        }
+
+        User uploader = findUserByEmail(uploadedByEmail);
+        List<CandidateCvResponse> successfulUploads = new ArrayList<>();
+        List<BulkUploadFailure> failedUploads = new ArrayList<>();
+        int totalFilesCount = 0;
+
+        for (MultipartFile file : files) {
+            if (file.isEmpty()) {
+                totalFilesCount++;
+                failedUploads.add(new BulkUploadFailure(file.getOriginalFilename(), "File is empty"));
+                continue;
+            }
+
+            String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "unnamed";
+            if (filename.toLowerCase(Locale.ROOT).endsWith(".zip")) {
+                totalFilesCount += processZipArchive(file, defaultCandidateId, uploader, successfulUploads, failedUploads);
+            } else {
+                totalFilesCount++;
+                processSingleFile(file, defaultCandidateId, uploader, successfulUploads, failedUploads);
+            }
+        }
+
+        return BulkCvUploadResponse.builder()
+                .totalFiles(totalFilesCount)
+                .successCount(successfulUploads.size())
+                .failureCount(failedUploads.size())
+                .successfulUploads(successfulUploads)
+                .failedUploads(failedUploads)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public Resource loadCvResource(Long id) {
+        CandidateCv cv = findCvById(id);
+        return fileStorageService.loadFileAsResource(cv.getFileUrl());
     }
 
     @Transactional(readOnly = true)
@@ -64,7 +151,172 @@ public class CandidateCvService {
     }
 
     public void deleteCv(Long id) {
-        candidateCvRepository.delete(findCvById(id));
+        CandidateCv cv = findCvById(id);
+        fileStorageService.deleteFile(cv.getFileUrl());
+        candidateCvRepository.delete(cv);
+    }
+
+    private void processSingleFile(MultipartFile file, Long defaultCandidateId, User uploader,
+            List<CandidateCvResponse> successfulUploads, List<BulkUploadFailure> failedUploads) {
+        String filename = file.getOriginalFilename() != null ? file.getOriginalFilename() : "cv_file";
+        try {
+            Candidate candidate = resolveCandidate(defaultCandidateId, filename);
+            String storedPath = fileStorageService.storeFile(file, "cvs");
+            String fileType = determineFileType(filename, file.getContentType());
+            String parsedText = fileStorageService.extractTextIfPossible(file);
+
+            CandidateCv cv = candidateCvRepository.save(CandidateCv.builder()
+                    .candidate(candidate)
+                    .fileName(filename)
+                    .fileUrl(storedPath)
+                    .fileType(fileType)
+                    .uploadedBy(uploader)
+                    .parsedText(parsedText)
+                    .build());
+
+            successfulUploads.add(CandidateCvResponse.fromEntity(cv));
+        } catch (Exception exception) {
+            log.warn("Bulk upload failed for file: {}", filename, exception);
+            failedUploads.add(new BulkUploadFailure(filename, exception.getMessage()));
+        }
+    }
+
+    private int processZipArchive(MultipartFile zipFile, Long defaultCandidateId, User uploader,
+            List<CandidateCvResponse> successfulUploads, List<BulkUploadFailure> failedUploads) {
+        int count = 0;
+        try (ZipInputStream zipInputStream = new ZipInputStream(zipFile.getInputStream())) {
+            ZipEntry entry;
+            while ((entry = zipInputStream.getNextEntry()) != null) {
+                if (entry.isDirectory()) {
+                    zipInputStream.closeEntry();
+                    continue;
+                }
+
+                String entryName = StringUtils.cleanPath(entry.getName());
+                if (entryName.startsWith("__MACOSX") || entryName.startsWith(".")) {
+                    zipInputStream.closeEntry();
+                    continue;
+                }
+
+                int lastSlash = Math.max(entryName.lastIndexOf('/'), entryName.lastIndexOf('\\'));
+                String cleanEntryName = lastSlash >= 0 ? entryName.substring(lastSlash + 1) : entryName;
+                if (!StringUtils.hasText(cleanEntryName) || cleanEntryName.startsWith(".")) {
+                    zipInputStream.closeEntry();
+                    continue;
+                }
+
+                count++;
+                try {
+                    byte[] content = readZipEntryContent(zipInputStream);
+                    zipInputStream.closeEntry();
+
+                    Candidate candidate = resolveCandidate(defaultCandidateId, cleanEntryName);
+                    String storedPath = fileStorageService.storeFile(content, cleanEntryName, null, "cvs");
+                    String fileType = determineFileType(cleanEntryName, null);
+                    String parsedText = fileStorageService.extractTextIfPossible(content, cleanEntryName);
+
+                    CandidateCv cv = candidateCvRepository.save(CandidateCv.builder()
+                            .candidate(candidate)
+                            .fileName(cleanEntryName)
+                            .fileUrl(storedPath)
+                            .fileType(fileType)
+                            .uploadedBy(uploader)
+                            .parsedText(parsedText)
+                            .build());
+
+                    successfulUploads.add(CandidateCvResponse.fromEntity(cv));
+                } catch (Exception exception) {
+                    log.warn("Failed processing zip entry: {}", cleanEntryName, exception);
+                    failedUploads.add(new BulkUploadFailure(cleanEntryName, exception.getMessage()));
+                }
+            }
+        } catch (IOException exception) {
+            log.error("Failed to read zip archive: {}", zipFile.getOriginalFilename(), exception);
+            failedUploads.add(new BulkUploadFailure(zipFile.getOriginalFilename(), "Invalid or corrupted zip archive: " + exception.getMessage()));
+        }
+        return count;
+    }
+
+    private byte[] readZipEntryContent(ZipInputStream zipInputStream) throws IOException {
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        byte[] data = new byte[4096];
+        int bytesRead;
+        while ((bytesRead = zipInputStream.read(data, 0, data.length)) != -1) {
+            buffer.write(data, 0, bytesRead);
+        }
+        return buffer.toByteArray();
+    }
+
+    private Candidate resolveCandidate(Long defaultCandidateId, String filename) {
+        if (defaultCandidateId != null) {
+            return findCandidateById(defaultCandidateId);
+        }
+
+        String email = extractEmailFromFilename(filename);
+        if (email != null) {
+            return candidateRepository.findByEmail(email).orElseGet(() -> {
+                String candidateName = extractCandidateNameFromFilename(filename, email);
+                return candidateRepository.save(Candidate.builder()
+                        .fullName(candidateName)
+                        .email(email)
+                        .source("CV_UPLOAD")
+                        .build());
+            });
+        }
+
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "No candidateId provided and cannot extract email from filename: " + filename);
+    }
+
+    private String extractEmailFromFilename(String filename) {
+        if (!StringUtils.hasText(filename)) {
+            return null;
+        }
+
+        int lastDot = filename.lastIndexOf('.');
+        String baseName = lastDot > 0 ? filename.substring(0, lastDot) : filename;
+
+        String[] tokens = baseName.split("[\\s_\\-\\[\\]\\(\\)]+");
+        for (String token : tokens) {
+            Matcher matcher = STRICT_EMAIL_PATTERN.matcher(token);
+            if (matcher.matches()) {
+                return token.toLowerCase(Locale.ROOT);
+            }
+        }
+
+        Matcher fallbackMatcher = FALLBACK_EMAIL_PATTERN.matcher(baseName);
+        if (fallbackMatcher.find()) {
+            return fallbackMatcher.group().toLowerCase(Locale.ROOT);
+        }
+
+        return null;
+    }
+
+    private String extractCandidateNameFromFilename(String filename, String email) {
+        int dotIndex = filename.lastIndexOf('.');
+        String namePart = dotIndex >= 0 ? filename.substring(0, dotIndex) : filename;
+        namePart = namePart.replace(email, "");
+        namePart = namePart.replaceAll("[_-]+", " ").trim();
+        return StringUtils.hasText(namePart) ? namePart : email;
+    }
+
+    private String determineFileType(String filename, String contentType) {
+        if (StringUtils.hasText(contentType)) {
+            return contentType;
+        }
+        int dotIndex = filename.lastIndexOf('.');
+        if (dotIndex >= 0 && dotIndex < filename.length() - 1) {
+            String ext = filename.substring(dotIndex + 1).toLowerCase(Locale.ROOT);
+            return switch (ext) {
+                case "pdf" -> "application/pdf";
+                case "doc" -> "application/msword";
+                case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+                case "txt" -> "text/plain";
+                case "rtf" -> "application/rtf";
+                default -> "application/octet-stream";
+            };
+        }
+        return "application/octet-stream";
     }
 
     private CandidateCv findCvById(Long id) {
