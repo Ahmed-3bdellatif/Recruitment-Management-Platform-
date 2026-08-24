@@ -63,6 +63,15 @@ public class CandidateService {
         return candidateRepository.findBySourceContainingIgnoreCase(source.trim());
     }
 
+    @Transactional(readOnly = true)
+    public List<Candidate> getCandidatesByTag(String tagName) {
+        if (!StringUtils.hasText(tagName)) {
+            return candidateRepository.findAll();
+        }
+
+        return candidateRepository.findDistinctByTags_NameIgnoreCase(tagName.trim());
+    }
+
     public Candidate updateCandidate(Long id, Candidate updatedCandidate) {
         Candidate candidate = findCandidateById(id);
         String email = normalizeEmail(updatedCandidate.getEmail());

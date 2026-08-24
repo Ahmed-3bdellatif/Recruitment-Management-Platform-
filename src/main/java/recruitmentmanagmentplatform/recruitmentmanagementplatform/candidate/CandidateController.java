@@ -30,12 +30,15 @@ public class CandidateController {
     @GetMapping
     public List<CandidateResponse> getCandidates(
             @RequestParam(required = false) String name,
-            @RequestParam(required = false) String source) {
+            @RequestParam(required = false) String source,
+            @RequestParam(required = false) String tag) {
         List<Candidate> candidates;
         if (name != null) {
             candidates = candidateService.searchCandidatesByName(name);
         } else if (source != null) {
             candidates = candidateService.getCandidatesBySource(source);
+        } else if (tag != null) {
+            candidates = candidateService.getCandidatesByTag(tag);
         } else {
             candidates = candidateService.getAllCandidates();
         }

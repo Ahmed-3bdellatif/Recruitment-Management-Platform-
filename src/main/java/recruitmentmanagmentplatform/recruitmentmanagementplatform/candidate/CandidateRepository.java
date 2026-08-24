@@ -13,4 +13,6 @@ public interface CandidateRepository extends JpaRepository<Candidate, Long> {
     List<Candidate> findByFullNameContainingIgnoreCase(String fullName);
 
     List<Candidate> findBySourceContainingIgnoreCase(String source);
+
+    List<Candidate> findDistinctByTags_NameIgnoreCase(String tagName);
 }
