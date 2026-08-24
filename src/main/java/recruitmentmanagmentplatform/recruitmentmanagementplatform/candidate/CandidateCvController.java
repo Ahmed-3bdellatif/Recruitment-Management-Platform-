@@ -24,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.BulkCvUploadResponse;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.CandidateCvResponse;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.CreateCandidateCvRequest;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.ParseCvTextRequest;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.ParsedCvResponse;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.UpdateCandidateCvRequest;
 
 @RestController
@@ -87,6 +89,24 @@ public class CandidateCvController {
             @AuthenticationPrincipal UserDetails principal) {
         BulkCvUploadResponse response = candidateCvService.bulkUploadCvs(files, candidateId, principal.getUsername());
         return ResponseEntity.ok(response);
+    }
+
+    @PostMapping("/{id}/parse")
+    @PreAuthorize("hasAnyRole('ADMIN', 'HR')")
+    public ParsedCvResponse parseCv(
+            @PathVariable Long id,
+            @RequestParam(value = "applyToCandidate", defaultValue = "true") boolean applyToCandidate) {
+        return candidateCvService.parseCv(id, applyToCandidate);
+    }
+
+    @PostMapping(value = "/parse-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ParsedCvResponse parseFile(@RequestParam("file") MultipartFile file) {
+        return candidateCvService.parseFile(file);
+    }
+
+    @PostMapping("/parse-text")
+    public ParsedCvResponse parseText(@Valid @RequestBody ParseCvTextRequest request) {
+        return candidateCvService.parseText(request.getText(), request.getCandidateId());
     }
 
     @PostMapping

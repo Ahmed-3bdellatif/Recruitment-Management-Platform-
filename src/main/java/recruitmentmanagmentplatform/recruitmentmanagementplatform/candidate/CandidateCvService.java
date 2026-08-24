@@ -2,6 +2,7 @@ package recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -21,6 +22,9 @@ import org.springframework.web.server.ResponseStatusException;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.BulkCvUploadResponse;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.BulkUploadFailure;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.CandidateCvResponse;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.dto.ParsedCvResponse;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.parser.CvParsingService;
+import recruitmentmanagmentplatform.recruitmentmanagementplatform.candidate.parser.ParsedCvData;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.storage.FileStorageService;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.User;
 import recruitmentmanagmentplatform.recruitmentmanagementplatform.user.UserRepository;
@@ -38,6 +42,7 @@ public class CandidateCvService {
     private final CandidateRepository candidateRepository;
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
+    private final CvParsingService cvParsingService;
 
     public CandidateCv createCv(Long candidateId, String fileName, String fileUrl,
             String fileType, String uploadedByEmail, String parsedText) {
@@ -67,7 +72,12 @@ public class CandidateCvService {
                 file.getOriginalFilename() != null ? file.getOriginalFilename() : "cv_file");
         String storedPath = fileStorageService.storeFile(file, "cvs");
         String fileType = determineFileType(originalFilename, file.getContentType());
-        String parsedText = fileStorageService.extractTextIfPossible(file);
+        String extractedText = fileStorageService.extractTextIfPossible(file);
+
+        if (StringUtils.hasText(extractedText)) {
+            ParsedCvData parsedData = cvParsingService.parseText(extractedText);
+            cvParsingService.enrichCandidate(candidate, parsedData);
+        }
 
         CandidateCv cv = CandidateCv.builder()
                 .candidate(candidate)
@@ -75,7 +85,7 @@ public class CandidateCvService {
                 .fileUrl(storedPath)
                 .fileType(fileType)
                 .uploadedBy(uploader)
-                .parsedText(parsedText)
+                .parsedText(extractedText)
                 .build();
 
         return candidateCvRepository.save(cv);
@@ -114,6 +124,67 @@ public class CandidateCvService {
                 .successfulUploads(successfulUploads)
                 .failedUploads(failedUploads)
                 .build();
+    }
+
+    public ParsedCvResponse parseCv(Long cvId, boolean applyToCandidate) {
+        CandidateCv cv = findCvById(cvId);
+        String textToParse = cv.getParsedText();
+
+        if (!StringUtils.hasText(textToParse)) {
+            try {
+                Resource resource = fileStorageService.loadFileAsResource(cv.getFileUrl());
+                byte[] bytes = resource.getInputStream().readAllBytes();
+                textToParse = fileStorageService.extractTextIfPossible(bytes, cv.getFileName());
+                if (StringUtils.hasText(textToParse)) {
+                    cv.setParsedText(textToParse);
+                    candidateCvRepository.save(cv);
+                }
+            } catch (Exception exception) {
+                log.warn("Could not load file content for parsing: {}", cv.getFileUrl(), exception);
+            }
+        }
+
+        if (!StringUtils.hasText(textToParse)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "No extractable text found in CV for parsing");
+        }
+
+        ParsedCvData parsedData = cvParsingService.parseText(textToParse);
+        if (applyToCandidate && cv.getCandidate() != null) {
+            cvParsingService.enrichCandidate(cv.getCandidate(), parsedData);
+        }
+
+        return ParsedCvResponse.fromParsedData(parsedData, cv.getId(),
+                cv.getCandidate() != null ? cv.getCandidate().getId() : null);
+    }
+
+    public ParsedCvResponse parseFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "File cannot be empty");
+        }
+
+        String extractedText = fileStorageService.extractTextIfPossible(file);
+        if (!StringUtils.hasText(extractedText)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Could not extract readable text from uploaded file: " + file.getOriginalFilename());
+        }
+
+        ParsedCvData parsedData = cvParsingService.parseText(extractedText);
+        return ParsedCvResponse.fromParsedData(parsedData, null, null);
+    }
+
+    public ParsedCvResponse parseText(String rawText, Long candidateId) {
+        if (!StringUtils.hasText(rawText)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Text to parse cannot be empty");
+        }
+
+        ParsedCvData parsedData = cvParsingService.parseText(rawText);
+        if (candidateId != null) {
+            Candidate candidate = findCandidateById(candidateId);
+            cvParsingService.enrichCandidate(candidate, parsedData);
+        }
+
+        return ParsedCvResponse.fromParsedData(parsedData, null, candidateId);
     }
 
     @Transactional(readOnly = true)
@@ -163,7 +234,12 @@ public class CandidateCvService {
             Candidate candidate = resolveCandidate(defaultCandidateId, filename);
             String storedPath = fileStorageService.storeFile(file, "cvs");
             String fileType = determineFileType(filename, file.getContentType());
-            String parsedText = fileStorageService.extractTextIfPossible(file);
+            String extractedText = fileStorageService.extractTextIfPossible(file);
+
+            if (StringUtils.hasText(extractedText)) {
+                ParsedCvData parsedData = cvParsingService.parseText(extractedText);
+                cvParsingService.enrichCandidate(candidate, parsedData);
+            }
 
             CandidateCv cv = candidateCvRepository.save(CandidateCv.builder()
                     .candidate(candidate)
@@ -171,7 +247,7 @@ public class CandidateCvService {
                     .fileUrl(storedPath)
                     .fileType(fileType)
                     .uploadedBy(uploader)
-                    .parsedText(parsedText)
+                    .parsedText(extractedText)
                     .build());
 
             successfulUploads.add(CandidateCvResponse.fromEntity(cv));
@@ -213,7 +289,12 @@ public class CandidateCvService {
                     Candidate candidate = resolveCandidate(defaultCandidateId, cleanEntryName);
                     String storedPath = fileStorageService.storeFile(content, cleanEntryName, null, "cvs");
                     String fileType = determineFileType(cleanEntryName, null);
-                    String parsedText = fileStorageService.extractTextIfPossible(content, cleanEntryName);
+                    String extractedText = fileStorageService.extractTextIfPossible(content, cleanEntryName);
+
+                    if (StringUtils.hasText(extractedText)) {
+                        ParsedCvData parsedData = cvParsingService.parseText(extractedText);
+                        cvParsingService.enrichCandidate(candidate, parsedData);
+                    }
 
                     CandidateCv cv = candidateCvRepository.save(CandidateCv.builder()
                             .candidate(candidate)
@@ -221,7 +302,7 @@ public class CandidateCvService {
                             .fileUrl(storedPath)
                             .fileType(fileType)
                             .uploadedBy(uploader)
-                            .parsedText(parsedText)
+                            .parsedText(extractedText)
                             .build());
 
                     successfulUploads.add(CandidateCvResponse.fromEntity(cv));

@@ -1,6 +1,7 @@
 package recruitmentmanagmentplatform.recruitmentmanagementplatform.storage;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.MalformedURLException;
@@ -115,27 +116,83 @@ public class LocalFileStorageService implements FileStorageService {
             return null;
         }
 
-        String filename = file.getOriginalFilename();
-        if (filename != null && filename.toLowerCase(Locale.ROOT).endsWith(".txt")) {
-            try {
-                return new String(file.getBytes(), StandardCharsets.UTF_8);
-            } catch (IOException exception) {
-                log.debug("Could not read text content from file: {}", filename, exception);
-            }
+        try {
+            return extractTextIfPossible(file.getBytes(), file.getOriginalFilename());
+        } catch (IOException exception) {
+            log.debug("Could not read file bytes for text extraction: {}", file.getOriginalFilename(), exception);
+            return null;
         }
-        return null;
     }
 
     @Override
     public String extractTextIfPossible(byte[] content, String filename) {
-        if (content == null || content.length == 0) {
+        if (content == null || content.length == 0 || filename == null) {
             return null;
         }
 
-        if (filename != null && filename.toLowerCase(Locale.ROOT).endsWith(".txt")) {
+        String lower = filename.toLowerCase(Locale.ROOT);
+        if (lower.endsWith(".txt") || lower.endsWith(".rtf")) {
             return new String(content, StandardCharsets.UTF_8);
         }
+
+        if (lower.endsWith(".pdf")) {
+            return extractPdfText(content);
+        }
+
+        if (lower.endsWith(".docx")) {
+            return extractDocxText(content);
+        }
+
         return null;
+    }
+
+    private String extractPdfText(byte[] content) {
+        try (org.apache.pdfbox.pdmodel.PDDocument document = org.apache.pdfbox.Loader.loadPDF(content)) {
+            org.apache.pdfbox.text.PDFTextStripper stripper = new org.apache.pdfbox.text.PDFTextStripper();
+            return stripper.getText(document);
+        } catch (Exception exception) {
+            log.debug("Could not extract PDF text: {}", exception.getMessage());
+            return null;
+        }
+    }
+
+    private String extractDocxText(byte[] content) {
+        try (java.util.zip.ZipInputStream zis = new java.util.zip.ZipInputStream(new ByteArrayInputStream(content))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = zis.getNextEntry()) != null) {
+                if ("word/document.xml".equals(entry.getName())) {
+                    ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+                    byte[] data = new byte[4096];
+                    int n;
+                    while ((n = zis.read(data, 0, data.length)) != -1) {
+                        buffer.write(data, 0, n);
+                    }
+                    zis.closeEntry();
+                    String xml = buffer.toString(StandardCharsets.UTF_8);
+                    return convertDocxXmlToText(xml);
+                }
+                zis.closeEntry();
+            }
+        } catch (Exception exception) {
+            log.debug("Could not extract DOCX text: {}", exception.getMessage());
+        }
+        return null;
+    }
+
+    private String convertDocxXmlToText(String xml) {
+        if (!StringUtils.hasText(xml)) {
+            return null;
+        }
+        String formatted = xml.replaceAll("</w:p>", "\n")
+                .replaceAll("<w:br[^>]*>", "\n")
+                .replaceAll("<w:tab[^>]*>", "\t")
+                .replaceAll("<[^>]+>", "")
+                .replace("&amp;", "&")
+                .replace("&lt;", "<")
+                .replace("&gt;", ">")
+                .replace("&quot;", "\"")
+                .replace("&apos;", "'");
+        return formatted.trim();
     }
 
     private String saveToDisk(InputStream inputStream, String originalFilename, String subDirectory) throws IOException {
